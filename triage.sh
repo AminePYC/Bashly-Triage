@@ -14,6 +14,7 @@
 # remediate, kill processes, or modify the target system.
 
 set -uo pipefail
+umask 077
 
 CASE_ID="UNSET"
 EXAMINER="$(whoami)"
@@ -42,8 +43,6 @@ Options:
       --no-hash         Skip SHA256 manifest generation
   -h, --help            Show this help
 
-Run as root for full artifact access (shadow file, some /proc entries, full
-log access). Designed for authorized incident-response use only.
 EOF
 }
 
@@ -67,12 +66,18 @@ LOGFILE="$OUTDIR/collection.log"
 FINDINGS="$OUTDIR/analysis/findings.txt"
 touch "$LOGFILE" "$FINDINGS"
 
+LOG_FROZEN=0
 log() {
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" | tee -a "$LOGFILE" >/dev/null
+  local line="[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"
+  echo "$line"
+  [ "$LOG_FROZEN" -eq 0 ] && echo "$line" >> "$LOGFILE"
+  return 0
 }
-
 flag() {
-  echo "[FINDING] $*" | tee -a "$FINDINGS" "$LOGFILE" >/dev/null
+  echo "[FINDING] $*"
+  echo "[FINDING] $*" >> "$FINDINGS"
+  [ "$LOG_FROZEN" -eq 0 ] && echo "[FINDING] $*" >> "$LOGFILE"
+  return 0
 }
 
 need_root_warning() {
@@ -317,8 +322,9 @@ main() {
   collect_packages
   collect_kernel
   analyze_bash_history
-  generate_manifest
   generate_case_report
+  LOG_FROZEN=1
+  generate_manifest
   archive_output
   log "Collection complete. Output directory: $OUTDIR"
 }
